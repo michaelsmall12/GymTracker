@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="GymTracker.API/GymTracker.API.csproj" />
+  <Project Path="GymTracker.Data.EF/GymTracker.Data.EF.csproj" Id="5a4f75ea-786a-4e5d-864d-2aed72a509b2" />
+  <Project Path="GymTracker.Domain/GymTracker.Domain.csproj" Id="9303ab9e-01f3-4395-890e-2be1df803aee" />
+</Solution>
