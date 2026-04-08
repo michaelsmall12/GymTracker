@@ -10,6 +10,6 @@ namespace GymTracker.Domain
 
         public List<Exercise> Exercises { get; set; }
 
-        public string Location { get; set; }
+        public Location Location { get; set; }
     }
 }

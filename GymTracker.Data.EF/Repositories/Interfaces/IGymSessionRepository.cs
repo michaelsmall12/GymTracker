@@ -10,5 +10,7 @@ namespace GymTracker.Data.EF.Repositories.Interfaces
         Task<bool> AddGymSession(GymSession gymSession);
 
         Task<bool> RemoveGymSession(Guid gymSession);
+
+        Task<List<GymSession>> GetSessions();
     }
 }

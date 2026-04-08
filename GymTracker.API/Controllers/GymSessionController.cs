@@ -28,5 +28,11 @@ namespace GymTracker.API.Controllers
             var result = await GymSessionRepository.RemoveGymSession(id);
             return result ? Ok() : BadRequest();
         }
+
+        [HttpGet]
+        public async Task<IActionResult> GetSessions()
+        {
+            return Ok(await GymSessionRepository.GetSessions());
+        }
     }
 }

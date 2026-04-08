@@ -13,7 +13,16 @@ builder.Services.AddDbContext<GymTrackerContext>();
 builder.Services.AddTransient<IExerciseRepository, ExerciseRepository>();
 builder.Services.AddTransient<IGymSessionRepository, GymSessionRepository>();
 builder.Services.AddTransient<ILiftSetRepository, LiftSetRepository>();
-
+builder.Services.AddTransient<ILocationRepository, LocationRepository>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowWeb", builder =>
+    {
+        builder.WithOrigins("http://localhost:8081")
+               .AllowAnyMethod()
+               .AllowAnyHeader();
+    });
+});
 
 var app = builder.Build();
 
@@ -28,5 +37,5 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
-
+app.UseCors("AllowWeb");
 app.Run();

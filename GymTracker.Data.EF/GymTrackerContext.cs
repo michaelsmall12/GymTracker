@@ -16,6 +16,8 @@ namespace GymTracker.Data.EF
 
         public DbSet<ExerciseImage> Images{get;set;}
 
+        public DbSet<Location> Locations { get; set; }
+
         public string DbPath { get; }
 
         public GymTrackerContext()

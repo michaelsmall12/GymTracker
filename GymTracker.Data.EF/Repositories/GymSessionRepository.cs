@@ -35,6 +35,11 @@ namespace GymTracker.Data.EF.Repositories
             }
         }
 
+        public async Task<List<GymSession>> GetSessions()
+        {
+            return await _context.Sessions.ToListAsync();
+        }
+
         public async Task<bool> RemoveGymSession(Guid gymSession)
         {
             var SessionToDelete = await _context.Sessions.FirstOrDefaultAsync(x => x.Id == gymSession);
