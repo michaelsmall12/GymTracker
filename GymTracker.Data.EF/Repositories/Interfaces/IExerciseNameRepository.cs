@@ -5,10 +5,10 @@ using System.Text;
 
 namespace GymTracker.Data.EF.Repositories.Interfaces
 {
-    public interface ILocationRepository
+    public interface IExerciseNameRepository
     {
-        Task<List<Location>> GetLocations();
+        Task<List<ExerciseName>> GetExerciseNames();
 
-        Task<bool> AddLocation(string location);
+        Task<bool> AddExerciseName(string name);
     }
 }

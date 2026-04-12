@@ -3,6 +3,7 @@ using System;
 using GymTracker.Data.EF;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GymTracker.Data.EF.Migrations
 {
     [DbContext(typeof(GymTrackerContext))]
-    partial class GymTrackerContextModelSnapshot : ModelSnapshot
+    [Migration("20260412101225_addExerciseName")]
+    partial class addExerciseName
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
@@ -29,7 +32,7 @@ namespace GymTracker.Data.EF.Migrations
                     b.Property<Guid?>("GymSessionId")
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid?>("ImageId")
+                    b.Property<Guid>("ImageId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -154,7 +157,9 @@ namespace GymTracker.Data.EF.Migrations
 
                     b.HasOne("GymTracker.Domain.ExerciseImage", "Image")
                         .WithMany()
-                        .HasForeignKey("ImageId");
+                        .HasForeignKey("ImageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("ExerciseName");
 

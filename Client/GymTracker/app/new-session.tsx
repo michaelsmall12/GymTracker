@@ -1,14 +1,18 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { useLocationContext } from "./LocationContext";
+// import { v4 as uuidv4 } from 'uuid';
 import { API_ENDPOINTS } from "../constants/api";
 
 interface Location {
+  id: string;
   name: string;
 }
 
 export default function NewSession() {
   const router = useRouter();
+  const { setLocation } = useLocationContext();
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
@@ -24,11 +28,8 @@ export default function NewSession() {
     try {
       const response = await fetch(API_ENDPOINTS.LOCATIONS);
       if (!response.ok) throw new Error("Failed to fetch locations");
-      const data: string[] = await response.json();
-
-const formatted: Location[] = data.map((name) => ({ name }));
-
-setLocations(formatted);
+      const data: Location[] = await response.json();
+      setLocations(data);
     } catch (err) {
       setError("Failed to load locations. You can still add a new one.");
     } finally {
@@ -38,6 +39,7 @@ setLocations(formatted);
 
   function handleSelectLocation(location: Location) {
     setSelectedLocation(location.name);
+    setLocation(location);
     setAddingNew(false);
     setError(null);
   }
@@ -51,13 +53,16 @@ setLocations(formatted);
       });
       if (!response.ok) throw new Error("Failed to add location");
       // Assuming it returns the new location or something, but for now, just add to local state
-      const newLoc: Location = {  name }; // temp id
+      // Use a placeholder id for new location until API returns the real one
+      const newLoc: Location = { id: Date.now().toString(), name };
       setLocations(prev => [...prev, newLoc]);
       return true;
     } catch (err) {
       setError("Failed to add new location.");
       return false;
-    }}
+    }
+  }
+
   function handleAddNew() {
     setAddingNew(true);
     setSelectedLocation(null);
@@ -66,23 +71,23 @@ setLocations(formatted);
   }
 
   async function handleContinue() {
-    const location = selectedLocation || newLocation.trim();
-    if (!location) {
+    let locationObj: Location | null = null;
+    if (addingNew && newLocation.trim()) {
+      // If adding new, post to API
+      const success = await addNewLocation(newLocation.trim());
+      if (!success) return;
+      locationObj = { id: Date.now().toString(), name: newLocation.trim() };
+      setLocation(locationObj);
+    } else {
+      locationObj = locations.find(l => l.name === selectedLocation) || null;
+      setLocation(locationObj);
+    }
+    if (!locationObj) {
       setError("Please select or enter a location.");
       return;
     }
-
-    // If adding new, post to API
-    if (addingNew && newLocation.trim()) {
-      const success = await addNewLocation(newLocation.trim());
-      if (!success) return;
-    }
-
-    router.push({
-      pathname: "/new-session/set-1",
-      params: { location },
-    });
-}
+    router.push("/new-session/set-1");
+  }
 
   if (loading) {
     return (
@@ -105,7 +110,7 @@ setLocations(formatted);
         {locations.length > 0 ? (
           <FlatList
             data={locations}
-            keyExtractor={(item) => item.name}
+            keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <Pressable
                 style={[

@@ -25,6 +25,20 @@ namespace GymTracker.Data.EF.Repositories
 
             try
             {
+                if (gymSession.Location != null)
+                {
+                    var existingLocation = await _context.Locations.FindAsync(gymSession.Location.Id);
+                    if (existingLocation != null)
+                    {
+                        // use the tracked entity so EF doesn't try to insert a duplicate
+                        gymSession.Location = existingLocation;
+                    }
+                    else
+                    {
+                        // new location: add it explicitly (optional)
+                        _context.Locations.Add(gymSession.Location);
+                    }
+                }
                 await _context.Sessions.AddAsync(gymSession);
                 await _context.SaveChangesAsync();
                 return true;

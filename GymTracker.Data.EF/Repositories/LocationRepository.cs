@@ -1,4 +1,5 @@
 ﻿using GymTracker.Data.EF.Repositories.Interfaces;
+using GymTracker.Domain;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -39,9 +40,9 @@ namespace GymTracker.Data.EF.Repositories
             }            
         }
 
-        public async Task<List<string>> GetLocations()
+        public async Task<List<Location>> GetLocations()
         {
-            return _context.Locations.AsNoTracking().Select(x=>x.Name).ToList();
+            return await _context.Locations.AsNoTracking().ToListAsync();
         }
     }
 }

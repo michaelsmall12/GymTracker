@@ -14,6 +14,7 @@ builder.Services.AddTransient<IExerciseRepository, ExerciseRepository>();
 builder.Services.AddTransient<IGymSessionRepository, GymSessionRepository>();
 builder.Services.AddTransient<ILiftSetRepository, LiftSetRepository>();
 builder.Services.AddTransient<ILocationRepository, LocationRepository>();
+builder.Services.AddTransient<IExerciseNameRepository, ExerciseNameRepository>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowWeb", builder =>

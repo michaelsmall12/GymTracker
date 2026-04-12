@@ -8,10 +8,10 @@ namespace GymTracker.Domain
     {
         public Guid Id { get; set; }
 
-        public string Name { get; set; }
+        public ExerciseName ExerciseName { get; set; }
 
         public List<LiftSet> LiftSets { get; set; } = new List<LiftSet>();
 
-        public ExerciseImage Image { get; set; }
+        public ExerciseImage? Image { get; set; }
     }
 }
