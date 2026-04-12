@@ -1,142 +1,91 @@
-// Helper to format ISO date string as dd-mm-yyyy
-function formatDate(dateString?: string): string {
-  if (!dateString) return "No date";
-  // Handle cases like 0001-01-01T00:00:00
-  const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return dateString;
-  const [, year, month, day] = match;
-  return `${day}-${month}-${year}`;
-}
-import { Stack, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+
+
+
+import { useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { API_ENDPOINTS } from "../constants/api";
 
-import type { Location } from "./LocationContext";
-
-type SessionItem = {
-  id: string;
-  dateStarted?: string;
-  duration?: string;
-  notes?: string;
-  location?: Location;
-};
+function formatDate(dateString: string) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export default function PreviousSessions() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<SessionItem[]>([]);
-  const [locations, setLocations] = useState<string[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [locationFilter, setLocationFilter] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
+  const [showDeleteId, setShowDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteButtonY, setDeleteButtonY] = useState<number | null>(null);
+  const [filter, setFilter] = useState("");
 
   useEffect(() => {
-    async function loadSessions() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetch(API_ENDPOINTS.GYM_SESSIONS);
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
-        }
-
-        const data = await response.json();
-        const sessionsArray = Array.isArray(data) ? data : (data.sessions ? data.sessions : [data]);
-        setSessions(sessionsArray);
-
-        const uniqueLocations = Array.from(
-          new Set(
-            sessionsArray
-              .map((s: SessionItem) => s.location?.name)
-              .filter(Boolean)
-          )
-        );
-        setLocations(uniqueLocations as string[]);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadSessions();
+    setLoading(true);
+    fetch(API_ENDPOINTS.GYM_SESSIONS)
+      .then(res => res.json())
+      .then(data => setSessions(data))
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const filteredSessions = useMemo(() => {
-    return sessions.filter((session) => {
-      const matchesLocation = locationFilter
-        ? session.location?.name?.toLowerCase().includes(locationFilter.toLowerCase())
-        : true;
-      const matchesDate = dateFilter ? session.dateStarted?.includes(dateFilter) : true;
-      return matchesLocation && matchesDate;
-    });
-  }, [sessions, locationFilter, dateFilter]);
+    if (!filter) return sessions;
+    return sessions.filter(s =>
+      (s.location?.name ?? "").toLowerCase().includes(filter.toLowerCase())
+    );
+  }, [sessions, filter]);
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: "Previous Sessions" }} />
       <Text style={styles.heading}>Previous Sessions</Text>
-
-      <Text style={styles.description}>Filter completed sessions by location or date, then tap a session to review exercises and sets.</Text>
-
+      <Text style={styles.description}>View and manage your previous gym sessions.</Text>
       <View style={styles.filterRow}>
         <TextInput
           style={styles.filterInput}
-          placeholder="Filter location"
-          placeholderTextColor="#c7b77d"
-          value={locationFilter}
-          onChangeText={setLocationFilter}
-        />
-        <TextInput
-          style={styles.filterInput}
-          placeholder="Date (YYYY-MM-DD)"
-          placeholderTextColor="#c7b77d"
-          value={dateFilter}
-          onChangeText={setDateFilter}
+          placeholder="Filter by location..."
+          placeholderTextColor="#888"
+          value={filter}
+          onChangeText={setFilter}
         />
       </View>
-
-      {locations.length > 0 && (
-        <ScrollView horizontal style={styles.chipScroll} contentContainerStyle={styles.chipContent}>
-          {locations.map((locationName) => (
-            <Pressable
-              key={locationName}
-              style={[styles.chip, locationFilter === locationName && styles.chipActive]}
-              onPress={() => setLocationFilter(locationName)}
-            >
-              <Text style={[styles.chipText, locationFilter === locationName && styles.chipTextActive]}>{locationName}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-
       {loading ? (
-        <ActivityIndicator size="large" color="#F6C846" style={styles.loading} />
+        <ActivityIndicator style={styles.loading} />
       ) : error ? (
-        <Text style={styles.error}>Unable to load sessions. {error}</Text>
+        <Text style={styles.error}>{error}</Text>
       ) : filteredSessions.length === 0 ? (
-        <Text style={styles.emptyText}>No sessions match the selected filters.</Text>
+        <Text style={styles.emptyText}>No sessions found.</Text>
       ) : (
         <ScrollView style={styles.sessionList} contentContainerStyle={styles.sessionListContent}>
-          {filteredSessions.map((session) => (
-            <Pressable
+          {filteredSessions.map(session => (
+            <SessionCard
               key={session.id}
-              style={styles.sessionCard}
-              onPress={() => router.push(`/session/${session.id}`)}
-            >
-              <View style={styles.sessionHeader}>
-                <Text style={styles.sessionLocation}>{session.location?.name ?? "Unknown location"}</Text>
-                <Text style={styles.sessionDate}>{formatDate(session.dateStarted)}</Text>
-              </View>
-              <Text style={styles.sessionDetail}>Duration: {session.duration ?? "N/A"}</Text>
-              {session.notes ? <Text style={styles.sessionNotes}>{session.notes}</Text> : null}
-            </Pressable>
+              session={session}
+              onDelete={async () => {
+                setDeletingId(session.id);
+                setError(null);
+                try {
+                  const res = await fetch(API_ENDPOINTS.GYM_SESSIONS, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify( session.id ),
+                  });
+                  setDeleteButtonY(null);
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : String(err));
+                } finally {
+                  setDeletingId(null);
+                }
+              }}
+              showDelete={showDeleteId === session.id}
+              setShowDeleteId={setShowDeleteId}
+              deletingId={deletingId}
+              router={router}
+            />
           ))}
         </ScrollView>
       )}
-
       <Pressable
         style={styles.backButton}
         onPress={() => {
@@ -154,6 +103,45 @@ export default function PreviousSessions() {
   );
 }
 
+// SessionCard component for per-card overlay logic
+function SessionCard({ session, onDelete, showDelete, setShowDeleteId, deletingId, router }: any) {
+  return (
+    <View style={styles.sessionCard}>
+      <TouchableOpacity
+        style={styles.sessionHeader}
+        activeOpacity={0.7}
+        onPress={() => setShowDeleteId(showDelete ? null : session.id)}
+      >
+        <Text style={styles.sessionLocation}>{session.location?.name ?? "Unknown location"}</Text>
+        <Text style={styles.sessionDate}>{formatDate(session.dateStarted)}</Text>
+        <Text style={styles.menuDots}>⋮</Text>
+      </TouchableOpacity>
+      <Pressable
+        onPress={() => router.push(`/session/${session.id}`)}
+        style={{paddingTop: 6, paddingBottom: 2}}
+      >
+        <Text style={styles.sessionDetail}>Duration: {session.duration ?? "N/A"}</Text>
+        {session.notes ? <Text style={styles.sessionNotes}>{session.notes}</Text> : null}
+      </Pressable>
+      {showDelete && (
+        <View
+          style={[styles.deleteOverlayRoot, { left: 30, right: 30 }]}
+          pointerEvents="box-none"
+        >
+          <View style={styles.deleteContainer} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.deleteButton}
+              disabled={deletingId === session.id}
+              onPress={onDelete}
+            >
+              <Text style={styles.deleteButtonText}>{deletingId === session.id ? 'Deleting...' : 'Delete'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -230,43 +218,89 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   sessionCard: {
-    backgroundColor: "#111",
-    borderColor: "#333",
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 12,
+    backgroundColor: "#181818",
+    borderRadius: 14,
+    marginBottom: 18,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
   },
   sessionHeader: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   sessionLocation: {
     color: "#F6C846",
-    fontSize: 18,
     fontWeight: "700",
+    fontSize: 16,
+    flex: 1,
   },
   sessionDate: {
     color: "#EDE3B8",
-    fontSize: 16,
+    fontSize: 13,
+    marginLeft: 10,
+  },
+  menuDots: {
+    color: "#888",
+    fontSize: 22,
+    marginLeft: 12,
+    marginRight: 0,
   },
   sessionDetail: {
-    color: "#fff",
-    marginBottom: 6,
+    color: "#EDE3B8",
+    fontSize: 14,
+    marginBottom: 2,
   },
   sessionNotes: {
-    color: "#C7B77D",
+    color: "#aaa",
+    fontSize: 13,
+    marginTop: 2,
   },
   backButton: {
-    marginTop: 12,
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: "#F6C846",
+    marginTop: 18,
+    alignSelf: "center",
+    backgroundColor: "#222",
+    borderRadius: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
   },
   backText: {
-    color: "#050505",
+    color: "#F6C846",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  deleteOverlayRoot: {
+    position: "absolute",
+    zIndex: 100,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingVertical: 40,
+    borderRadius: 16,
+  },
+  deleteContainer: {
+    backgroundColor: "#222",
+    borderRadius: 14,
+    padding: 18,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  deleteButton: {
+    backgroundColor: "#F44336",
+    borderRadius: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  deleteButtonText: {
+    color: "#fff",
     fontWeight: "700",
     fontSize: 16,
   },

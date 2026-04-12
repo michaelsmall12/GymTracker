@@ -23,7 +23,7 @@ namespace GymTracker.API.Controllers
         }
 
         [HttpDelete]
-        public async Task<IActionResult> DeleteGymSession([FromQuery] Guid id)
+        public async Task<IActionResult> DeleteGymSession([FromBody] Guid id)
         {
             var result = await GymSessionRepository.RemoveGymSession(id);
             return result ? Ok() : BadRequest();

@@ -57,7 +57,7 @@ namespace GymTracker.Data.EF.Repositories
 
         public async Task<bool> RemoveGymSession(Guid gymSession)
         {
-            var SessionToDelete = await _context.Sessions.FirstOrDefaultAsync(x => x.Id == gymSession);
+            var SessionToDelete = await _context.Sessions.Include(x=>x.Exercises).Include(x=>x.Location).FirstOrDefaultAsync(x => x.Id == gymSession);
 
             if (SessionToDelete == null)
             {
