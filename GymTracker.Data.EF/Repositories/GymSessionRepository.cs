@@ -39,6 +39,7 @@ namespace GymTracker.Data.EF.Repositories
                         _context.Locations.Add(gymSession.Location);
                     }
                 }
+                gymSession.DateStarted = DateTime.UtcNow;
                 await _context.Sessions.AddAsync(gymSession);
                 await _context.SaveChangesAsync();
                 return true;
@@ -51,7 +52,7 @@ namespace GymTracker.Data.EF.Repositories
 
         public async Task<List<GymSession>> GetSessions()
         {
-            return await _context.Sessions.ToListAsync();
+            return await _context.Sessions.Include(x=>x.Location).AsNoTracking().ToListAsync();
         }
 
         public async Task<bool> RemoveGymSession(Guid gymSession)

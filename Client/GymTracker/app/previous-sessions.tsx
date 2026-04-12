@@ -1,14 +1,25 @@
+// Helper to format ISO date string as dd-mm-yyyy
+function formatDate(dateString?: string): string {
+  if (!dateString) return "No date";
+  // Handle cases like 0001-01-01T00:00:00
+  const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return dateString;
+  const [, year, month, day] = match;
+  return `${day}-${month}-${year}`;
+}
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { API_ENDPOINTS } from "../constants/api";
 
+import type { Location } from "./LocationContext";
+
 type SessionItem = {
   id: string;
-  date?: string;
+  dateStarted?: string;
   duration?: string;
   notes?: string;
-  location?: string;
+  location?: Location;
 };
 
 export default function PreviousSessions() {
@@ -36,7 +47,11 @@ export default function PreviousSessions() {
         setSessions(sessionsArray);
 
         const uniqueLocations = Array.from(
-          new Set(sessionsArray.map((s: SessionItem) => s.location).filter(Boolean))
+          new Set(
+            sessionsArray
+              .map((s: SessionItem) => s.location?.name)
+              .filter(Boolean)
+          )
         );
         setLocations(uniqueLocations as string[]);
       } catch (err) {
@@ -52,9 +67,9 @@ export default function PreviousSessions() {
   const filteredSessions = useMemo(() => {
     return sessions.filter((session) => {
       const matchesLocation = locationFilter
-        ? session.location?.toLowerCase().includes(locationFilter.toLowerCase())
+        ? session.location?.name?.toLowerCase().includes(locationFilter.toLowerCase())
         : true;
-      const matchesDate = dateFilter ? session.date?.includes(dateFilter) : true;
+      const matchesDate = dateFilter ? session.dateStarted?.includes(dateFilter) : true;
       return matchesLocation && matchesDate;
     });
   }, [sessions, locationFilter, dateFilter]);
@@ -85,13 +100,13 @@ export default function PreviousSessions() {
 
       {locations.length > 0 && (
         <ScrollView horizontal style={styles.chipScroll} contentContainerStyle={styles.chipContent}>
-          {locations.map((location) => (
+          {locations.map((locationName) => (
             <Pressable
-              key={location}
-              style={[styles.chip, locationFilter === location && styles.chipActive]}
-              onPress={() => setLocationFilter(location)}
+              key={locationName}
+              style={[styles.chip, locationFilter === locationName && styles.chipActive]}
+              onPress={() => setLocationFilter(locationName)}
             >
-              <Text style={[styles.chipText, locationFilter === location && styles.chipTextActive]}>{location}</Text>
+              <Text style={[styles.chipText, locationFilter === locationName && styles.chipTextActive]}>{locationName}</Text>
             </Pressable>
           ))}
         </ScrollView>
@@ -112,8 +127,8 @@ export default function PreviousSessions() {
               onPress={() => router.push(`/session/${session.id}`)}
             >
               <View style={styles.sessionHeader}>
-                <Text style={styles.sessionLocation}>{session.location ?? "Unknown location"}</Text>
-                <Text style={styles.sessionDate}>{session.date ?? "No date"}</Text>
+                <Text style={styles.sessionLocation}>{session.location?.name ?? "Unknown location"}</Text>
+                <Text style={styles.sessionDate}>{formatDate(session.dateStarted)}</Text>
               </View>
               <Text style={styles.sessionDetail}>Duration: {session.duration ?? "N/A"}</Text>
               {session.notes ? <Text style={styles.sessionNotes}>{session.notes}</Text> : null}
@@ -122,7 +137,17 @@ export default function PreviousSessions() {
         </ScrollView>
       )}
 
-      <Pressable style={styles.backButton} onPress={() => router.back()}>
+      <Pressable
+        style={styles.backButton}
+        onPress={() => {
+          // @ts-ignore: canGoBack is available in expo-router >=2.0.0
+          if (typeof router.canGoBack === "function" && router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/");
+          }
+        }}
+      >
         <Text style={styles.backText}>Back</Text>
       </Pressable>
     </View>
