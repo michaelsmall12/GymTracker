@@ -34,5 +34,11 @@ namespace GymTracker.API.Controllers
         {
             return Ok(await GymSessionRepository.GetSessions());
         }
+
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetSessions([FromRoute] Guid id)
+        {
+            return Ok(await GymSessionRepository.GetSessionAsync(id));
+        }
     }
 }

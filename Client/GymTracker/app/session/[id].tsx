@@ -1,136 +1,137 @@
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { API_ENDPOINTS } from "../../constants/api";
-
-type ExerciseItem = {
-  id: string;
-  name?: string;
-  weight?: string;
-  reps?: number;
-  notes?: string;
-};
-
-type SetItem = {
-  id: string;
-  weight?: string;
-  reps?: number;
-  notes?: string;
-  timestamp?: string;
-};
 
 export default function SessionDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const [exercises, setExercises] = useState<ExerciseItem[]>([]);
+  const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [setsByExercise, setSetsByExercise] = useState<Record<string, SetItem[]>>({});
-  const [expandedExerciseIds, setExpandedExerciseIds] = useState<string[]>([]);
 
   useEffect(() => {
-    async function loadExercises() {
+    async function loadSession() {
       if (!id) {
         setError("Session ID is missing.");
         setLoading(false);
         return;
       }
-
       setLoading(true);
       setError(null);
-
       try {
-        const response = await fetch(`${API_ENDPOINTS.GYM_SESSIONS}/${id}/exercises`);
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
-        }
-
-        const data = await response.json();
-        const exerciseArray = Array.isArray(data) ? data : (data.exercises ? data.exercises : [data]);
-        setExercises(exerciseArray);
+        const res = await fetch(`${API_ENDPOINTS.GYM_SESSIONS}/${id}`);
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        const data = await res.json();
+        setSession(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }
     }
-
-    loadExercises();
+    loadSession();
   }, [id]);
 
-  async function loadSets(exerciseId: string) {
-    if (setsByExercise[exerciseId]) {
-      setExpandedExerciseIds((ids) => ids.filter((item) => item !== exerciseId));
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_ENDPOINTS.GYM_SESSIONS}/${id}/exercises/${exerciseId}/sets`);
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
-      }
-
-      const data = await response.json();
-      const setsArray = Array.isArray(data) ? data : (data.sets ? data.sets : [data]);
-      setSetsByExercise((current) => ({ ...current, [exerciseId]: setsArray }));
-      setExpandedExerciseIds((ids) => [...ids, exerciseId]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+  // Helper functions
+  function formatDate(dateString: string) {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return date.toLocaleDateString() + " " + date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#F6C846" />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>{error}</Text>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backText}>Go Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!session) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.empty}>Session not found.</Text>
+      </View>
+    );
+  }
+
+  const exercises = session.exercises ?? [];
+  const totalSets = exercises.reduce((sum: number, ex: any) => sum + (ex.liftSets?.length ?? 0), 0);
+  const totalWeight = exercises.reduce(
+    (sum: number, ex: any) =>
+      sum + (ex.liftSets ?? []).reduce((s: number, set: any) => s + (set.weight ?? 0) * (set.reps ?? 0), 0),
+    0
+  );
 
   return (
     <View style={styles.container}>
-      <Stack.Screen options={{ title: `Session ${id}` }} />
-      <Text style={styles.heading}>Session Review</Text>
-      <Text style={styles.description}>Load exercises from the selected session and tap any exercise to view sets.</Text>
-
-      {loading ? (
-        <ActivityIndicator size="large" color="#F6C846" style={styles.loading} />
-      ) : error ? (
-        <Text style={styles.error}>{error}</Text>
-      ) : exercises.length === 0 ? (
-        <Text style={styles.empty}>No exercises were found for this session.</Text>
-      ) : (
-        <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-          {exercises.map((exercise) => {
-            const isExpanded = expandedExerciseIds.includes(exercise.id);
-            const exerciseSets = setsByExercise[exercise.id] ?? [];
-            return (
-              <View key={exercise.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.exerciseName}>{exercise.name ?? "Unnamed exercise"}</Text>
-                  <Pressable style={styles.viewSetsButton} onPress={() => loadSets(exercise.id)}>
-                    <Text style={styles.viewSetsText}>{isExpanded ? "Hide sets" : "View sets"}</Text>
-                  </Pressable>
-                </View>
-                <Text style={styles.exerciseDetail}>Weight: {exercise.weight ?? "—"}</Text>
-                <Text style={styles.exerciseDetail}>Reps: {exercise.reps ?? "—"}</Text>
-                {exercise.notes ? <Text style={styles.exerciseNote}>{exercise.notes}</Text> : null}
-                {isExpanded && (
-                  <View style={styles.setsContainer}>
-                    {exerciseSets.length === 0 ? (
-                      <Text style={styles.setsEmpty}>No sets available for this exercise.</Text>
-                    ) : (
-                      exerciseSets.map((setItem) => (
-                        <View key={setItem.id} style={styles.setRow}>
-                          <Text style={styles.setText}>Set {setItem.id}</Text>
-                          <Text style={styles.setText}>Weight: {setItem.weight ?? "—"}</Text>
-                          <Text style={styles.setText}>Reps: {setItem.reps ?? "—"}</Text>
-                          {setItem.notes ? <Text style={styles.setNote}>{setItem.notes}</Text> : null}
-                        </View>
-                      ))
-                    )}
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </ScrollView>
+      <Text style={styles.date}>{formatDate(session.dateStarted)}</Text>
+      {session.location?.name && (
+        <Text style={styles.location}>{session.location.name}</Text>
       )}
 
+      <View style={styles.statsRow}>
+        <View style={styles.statBox}>
+          <Text style={styles.statValue}>{exercises.length}</Text>
+          <Text style={styles.statLabel}>Exercises</Text>
+        </View>
+        <View style={styles.statBox}>
+          <Text style={styles.statValue}>{totalSets}</Text>
+          <Text style={styles.statLabel}>Sets</Text>
+        </View>
+        <View style={styles.statBox}>
+          <Text style={styles.statValue}>{totalWeight}</Text>
+          <Text style={styles.statLabel}>Total Weight</Text>
+        </View>
+      </View>
+
+      <FlatList
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        data={exercises}
+        keyExtractor={(item: any) => item.id}
+        renderItem={({ item: exercise }: { item: any }) => (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.exerciseName}>
+                {exercise.exerciseName?.name ?? "Unknown Exercise"}
+              </Text>
+              <Text style={styles.exerciseDetail}>
+                {exercise.liftSets?.length ?? 0} sets
+              </Text>
+            </View>
+            {(exercise.liftSets ?? []).length > 0 ? (
+              <View style={styles.setsContainer}>
+                {exercise.liftSets.map((set: any, idx: number) => (
+                  <View key={set.id} style={styles.setRow}>
+                    <Text style={styles.setText}>
+                      Set {idx + 1}: {set.reps} reps × {set.weight} lbs
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.setsEmpty}>No sets recorded</Text>
+            )}
+          </View>
+        )}
+        ListEmptyComponent={<Text style={styles.empty}>No exercises in this session.</Text>}
+      />
+
       <Pressable style={styles.backButton} onPress={() => router.back()}>
-        <Text style={styles.backText}>Back to Sessions</Text>
+        <Text style={styles.backText}>Go Back</Text>
       </Pressable>
     </View>
   );
@@ -139,26 +140,50 @@ export default function SessionDetail() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: "#050505",
     padding: 20,
   },
-  heading: {
+  date: {
     color: "#F6C846",
-    fontSize: 28,
-    fontWeight: "900",
-    marginBottom: 8,
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 4,
   },
-  description: {
+  location: {
     color: "#EDE3B8",
+    fontSize: 16,
     marginBottom: 16,
-    lineHeight: 22,
   },
-  loading: {
-    marginTop: 24,
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 20,
   },
-  error: {
-    color: "#ff7f7f",
-    marginTop: 12,
+  statBox: {
+    flex: 1,
+    alignItems: "center",
+    backgroundColor: "#111",
+    borderColor: "#333",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginHorizontal: 4,
+  },
+  statValue: {
+    color: "#F6C846",
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  statLabel: {
+    color: "#EDE3B8",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  errorText: {
+    color: "#ff4444",
+    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 16,
   },
   empty: {
     color: "#EDE3B8",
@@ -191,23 +216,9 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  viewSetsButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#F6C846",
-  },
-  viewSetsText: {
-    color: "#050505",
-    fontWeight: "700",
-  },
   exerciseDetail: {
     color: "#EDE3B8",
     marginBottom: 4,
-  },
-  exerciseNote: {
-    color: "#C7B77D",
-    marginBottom: 10,
   },
   setsContainer: {
     marginTop: 12,
@@ -224,9 +235,6 @@ const styles = StyleSheet.create({
   setText: {
     color: "#fff",
   },
-  setNote: {
-    color: "#C7B77D",
-  },
   backButton: {
     marginTop: 14,
     alignItems: "center",
@@ -237,5 +245,5 @@ const styles = StyleSheet.create({
   backText: {
     color: "#050505",
     fontWeight: "700",
-  },
+  }
 });

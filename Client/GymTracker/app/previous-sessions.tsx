@@ -3,7 +3,7 @@
 
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { API_ENDPOINTS } from "../constants/api";
 
 function formatDate(dateString: string) {
@@ -16,9 +16,8 @@ export default function PreviousSessions() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDeleteId, setShowDeleteId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteButtonY, setDeleteButtonY] = useState<number | null>(null);
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
@@ -62,30 +61,62 @@ export default function PreviousSessions() {
             <SessionCard
               key={session.id}
               session={session}
-              onDelete={async () => {
-                setDeletingId(session.id);
-                setError(null);
-                try {
-                  const res = await fetch(API_ENDPOINTS.GYM_SESSIONS, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify( session.id ),
-                  });
-                  setDeleteButtonY(null);
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err));
-                } finally {
-                  setDeletingId(null);
-                }
-              }}
-              showDelete={showDeleteId === session.id}
-              setShowDeleteId={setShowDeleteId}
-              deletingId={deletingId}
+              onRequestDelete={() => setDeleteTarget(session)}
               router={router}
             />
           ))}
         </ScrollView>
       )}
+      <Modal
+        visible={deleteTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeleteTarget(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Delete Session</Text>
+            <Text style={styles.modalMessage}>
+              Are you sure you want to delete this session?
+            </Text>
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={styles.modalCancelButton}
+                onPress={() => setDeleteTarget(null)}
+              >
+                <Text style={styles.modalCancelText}>No</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalDeleteButton}
+                disabled={deletingId !== null}
+                onPress={async () => {
+                  if (!deleteTarget) return;
+                  setDeletingId(deleteTarget.id);
+                  setError(null);
+                  try {
+                    await fetch(API_ENDPOINTS.GYM_SESSIONS, {
+                      method: 'DELETE',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(deleteTarget.id),
+                    });
+                    setSessions(prev => prev.filter(s => s.id !== deleteTarget.id));
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setDeletingId(null);
+                    setDeleteTarget(null);
+                  }
+                }}
+              >
+                <Text style={styles.modalDeleteText}>
+                  {deletingId ? 'Deleting...' : 'Yes'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Pressable
         style={styles.backButton}
         onPress={() => {
@@ -104,17 +135,19 @@ export default function PreviousSessions() {
 }
 
 // SessionCard component for per-card overlay logic
-function SessionCard({ session, onDelete, showDelete, setShowDeleteId, deletingId, router }: any) {
+function SessionCard({ session, onRequestDelete, router }: any) {
   return (
     <View style={styles.sessionCard}>
       <TouchableOpacity
         style={styles.sessionHeader}
         activeOpacity={0.7}
-        onPress={() => setShowDeleteId(showDelete ? null : session.id)}
+        onPress={() => router.push(`/session/${session.id}`)}
       >
         <Text style={styles.sessionLocation}>{session.location?.name ?? "Unknown location"}</Text>
         <Text style={styles.sessionDate}>{formatDate(session.dateStarted)}</Text>
-        <Text style={styles.menuDots}>⋮</Text>
+        <Pressable onPress={onRequestDelete} hitSlop={8}>
+          <Text style={styles.menuDots}>⋮</Text>
+        </Pressable>
       </TouchableOpacity>
       <Pressable
         onPress={() => router.push(`/session/${session.id}`)}
@@ -123,22 +156,6 @@ function SessionCard({ session, onDelete, showDelete, setShowDeleteId, deletingI
         <Text style={styles.sessionDetail}>Duration: {session.duration ?? "N/A"}</Text>
         {session.notes ? <Text style={styles.sessionNotes}>{session.notes}</Text> : null}
       </Pressable>
-      {showDelete && (
-        <View
-          style={[styles.deleteOverlayRoot, { left: 30, right: 30 }]}
-          pointerEvents="box-none"
-        >
-          <View style={styles.deleteContainer} pointerEvents="box-none">
-            <TouchableOpacity
-              style={styles.deleteButton}
-              disabled={deletingId === session.id}
-              onPress={onDelete}
-            >
-              <Text style={styles.deleteButtonText}>{deletingId === session.id ? 'Deleting...' : 'Delete'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -273,35 +290,61 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 16,
   },
-  deleteOverlayRoot: {
-    position: "absolute",
-    zIndex: 100,
-    alignItems: "center",
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.4)",
-    paddingVertical: 40,
-    borderRadius: 16,
-  },
-  deleteContainer: {
-    backgroundColor: "#222",
-    borderRadius: 14,
-    padding: 18,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 3,
   },
-  deleteButton: {
-    backgroundColor: "#F44336",
-    borderRadius: 8,
-    paddingHorizontal: 28,
+  modalBox: {
+    backgroundColor: "#1a1a1a",
+    borderRadius: 18,
+    padding: 28,
+    width: "80%",
+    maxWidth: 340,
+    alignItems: "center",
+    borderColor: "#333",
+    borderWidth: 1,
+  },
+  modalTitle: {
+    color: "#F6C846",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+  modalMessage: {
+    color: "#EDE3B8",
+    fontSize: 15,
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    gap: 14,
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: "#333",
+    borderRadius: 10,
     paddingVertical: 12,
-    marginTop: 4,
+    alignItems: "center",
   },
-  deleteButtonText: {
+  modalCancelText: {
+    color: "#EDE3B8",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  modalDeleteButton: {
+    flex: 1,
+    backgroundColor: "#F44336",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  modalDeleteText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 16,
+    fontSize: 15,
   },
 });

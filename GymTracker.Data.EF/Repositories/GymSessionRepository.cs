@@ -50,6 +50,11 @@ namespace GymTracker.Data.EF.Repositories
             }
         }
 
+        public async Task<GymSession> GetSessionAsync(Guid id)
+        {
+            return await _context.Sessions.Include(x => x.Location).Include(x=>x.Exercises).ThenInclude(x=>x.LiftSets).Include(x => x.Exercises).ThenInclude(x => x.ExerciseName).Where(x=>x.Id==id).AsNoTracking().FirstOrDefaultAsync();
+        }
+
         public async Task<List<GymSession>> GetSessions()
         {
             return await _context.Sessions.Include(x=>x.Location).AsNoTracking().ToListAsync();
