@@ -1,9 +1,10 @@
 
 
 
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Stack, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import SpinningDumbbell from "../components/SpinningDumbbell";
 import { API_ENDPOINTS } from "../constants/api";
 
 function formatDate(dateString: string) {
@@ -19,15 +20,31 @@ export default function PreviousSessions() {
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const res = await fetch(API_ENDPOINTS.GYM_SESSIONS);
+      const data = await res.json();
+      const sorted = [...data].sort(
+        (a: any, b: any) => new Date(b.dateStarted).getTime() - new Date(a.dateStarted).getTime()
+      );
+      setSessions(sorted);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }, []);
 
   useEffect(() => {
     setLoading(true);
-    fetch(API_ENDPOINTS.GYM_SESSIONS)
-      .then(res => res.json())
-      .then(data => setSessions(data))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+    loadSessions().finally(() => setLoading(false));
+  }, [loadSessions]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadSessions();
+    setRefreshing(false);
+  }
 
   const filteredSessions = useMemo(() => {
     if (!filter) return sessions;
@@ -37,7 +54,8 @@ export default function PreviousSessions() {
   }, [sessions, filter]);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ title: "Session History" }} />
       <Text style={styles.heading}>Previous Sessions</Text>
       <Text style={styles.description}>View and manage your previous gym sessions.</Text>
       <View style={styles.filterRow}>
@@ -50,13 +68,32 @@ export default function PreviousSessions() {
         />
       </View>
       {loading ? (
-        <ActivityIndicator style={styles.loading} />
+        <SpinningDumbbell size={48} />
       ) : error ? (
         <Text style={styles.error}>{error}</Text>
       ) : filteredSessions.length === 0 ? (
-        <Text style={styles.emptyText}>No sessions found.</Text>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No sessions found.</Text>
+          <Pressable
+            style={styles.emptyAction}
+            onPress={() => router.push("/new-session")}
+          >
+            <Text style={styles.emptyActionText}>Start your first session</Text>
+          </Pressable>
+        </View>
       ) : (
-        <ScrollView style={styles.sessionList} contentContainerStyle={styles.sessionListContent}>
+        <ScrollView
+          style={styles.sessionList}
+          contentContainerStyle={styles.sessionListContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="#F6C846"
+              colors={["#F6C846"]}
+            />
+          }
+        >
           {filteredSessions.map(session => (
             <SessionCard
               key={session.id}
@@ -94,11 +131,12 @@ export default function PreviousSessions() {
                   setDeletingId(deleteTarget.id);
                   setError(null);
                   try {
-                    await fetch(API_ENDPOINTS.GYM_SESSIONS, {
+                    const res = await fetch(API_ENDPOINTS.GYM_SESSIONS, {
                       method: 'DELETE',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(deleteTarget.id),
                     });
+                    if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
                     setSessions(prev => prev.filter(s => s.id !== deleteTarget.id));
                   } catch (err) {
                     setError(err instanceof Error ? err.message : String(err));
@@ -116,21 +154,7 @@ export default function PreviousSessions() {
           </View>
         </View>
       </Modal>
-
-      <Pressable
-        style={styles.backButton}
-        onPress={() => {
-          // @ts-ignore: canGoBack is available in expo-router >=2.0.0
-          if (typeof router.canGoBack === "function" && router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace("/");
-          }
-        }}
-      >
-        <Text style={styles.backText}>Back</Text>
-      </Pressable>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -145,7 +169,11 @@ function SessionCard({ session, onRequestDelete, router }: any) {
       >
         <Text style={styles.sessionLocation}>{session.location?.name ?? "Unknown location"}</Text>
         <Text style={styles.sessionDate}>{formatDate(session.dateStarted)}</Text>
-        <Pressable onPress={onRequestDelete} hitSlop={8}>
+        <Pressable
+          onPress={onRequestDelete}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.menuButton}
+        >
           <Text style={styles.menuDots}>⋮</Text>
         </Pressable>
       </TouchableOpacity>
@@ -153,7 +181,6 @@ function SessionCard({ session, onRequestDelete, router }: any) {
         onPress={() => router.push(`/session/${session.id}`)}
         style={{paddingTop: 6, paddingBottom: 2}}
       >
-        <Text style={styles.sessionDetail}>Duration: {session.duration ?? "N/A"}</Text>
         {session.notes ? <Text style={styles.sessionNotes}>{session.notes}</Text> : null}
       </Pressable>
     </View>
@@ -224,9 +251,26 @@ const styles = StyleSheet.create({
     color: "#ff7f7f",
     marginTop: 12,
   },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   emptyText: {
     marginTop: 24,
     color: "#EDE3B8",
+    marginBottom: 16,
+  },
+  emptyAction: {
+    backgroundColor: "#F6C846",
+    borderRadius: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  emptyActionText: {
+    color: "#050505",
+    fontWeight: "700",
+    fontSize: 15,
   },
   sessionList: {
     flex: 1,
@@ -261,11 +305,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginLeft: 10,
   },
+  menuButton: {
+    padding: 8,
+  },
   menuDots: {
     color: "#888",
     fontSize: 22,
-    marginLeft: 12,
-    marginRight: 0,
+    marginLeft: 4,
   },
   sessionDetail: {
     color: "#EDE3B8",
@@ -276,19 +322,6 @@ const styles = StyleSheet.create({
     color: "#aaa",
     fontSize: 13,
     marginTop: 2,
-  },
-  backButton: {
-    marginTop: 18,
-    alignSelf: "center",
-    backgroundColor: "#222",
-    borderRadius: 10,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-  },
-  backText: {
-    color: "#F6C846",
-    fontWeight: "700",
-    fontSize: 16,
   },
   modalOverlay: {
     flex: 1,

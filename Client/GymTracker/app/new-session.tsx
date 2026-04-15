@@ -1,9 +1,9 @@
 import { Stack, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { useLocationContext } from "./LocationContext";
-// import { v4 as uuidv4 } from 'uuid';
+import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import SpinningDumbbell from "../components/SpinningDumbbell";
 import { API_ENDPOINTS } from "../constants/api";
+import { useLocationContext } from "./LocationContext";
 
 interface Location {
   id: string;
@@ -44,7 +44,7 @@ export default function NewSession() {
     setError(null);
   }
 
-  async function addNewLocation(name: string) {
+  async function addNewLocation(name: string): Promise<Location | null> {
     try {
       const response = await fetch(API_ENDPOINTS.LOCATIONS, {
         method: "POST",
@@ -52,14 +52,15 @@ export default function NewSession() {
         body: JSON.stringify(name),
       });
       if (!response.ok) throw new Error("Failed to add location");
-      // Assuming it returns the new location or something, but for now, just add to local state
-      // Use a placeholder id for new location until API returns the real one
-      const newLoc: Location = { id: Date.now().toString(), name };
-      setLocations(prev => [...prev, newLoc]);
-      return true;
+      await fetchLocations();
+      const refreshed = locations.find(l => l.name === name);
+      if (refreshed) return refreshed;
+      const data = await response.json().catch(() => null);
+      if (data && data.id) return data as Location;
+      return { id: Date.now().toString(), name };
     } catch (err) {
       setError("Failed to add new location.");
-      return false;
+      return null;
     }
   }
 
@@ -70,13 +71,13 @@ export default function NewSession() {
     setError(null);
   }
 
+  const canContinue = addingNew ? newLocation.trim().length > 0 : selectedLocation !== null;
+
   async function handleContinue() {
     let locationObj: Location | null = null;
     if (addingNew && newLocation.trim()) {
-      // If adding new, post to API
-      const success = await addNewLocation(newLocation.trim());
-      if (!success) return;
-      locationObj = { id: Date.now().toString(), name: newLocation.trim() };
+      locationObj = await addNewLocation(newLocation.trim());
+      if (!locationObj) return;
       setLocation(locationObj);
     } else {
       locationObj = locations.find(l => l.name === selectedLocation) || null;
@@ -91,16 +92,17 @@ export default function NewSession() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#FFD700" />
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: "Choose Location" }} />
+        <SpinningDumbbell size={48} />
         <Text style={styles.loadingText}>Loading previous locations...</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Stack.Screen options={{ title: "New Session" }} />
+    <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ title: "Choose Location" }} />
 
       <Text style={styles.heading}>Start a New Session</Text>
       <Text style={styles.description}>Select a previous gym location or add a new one.</Text>
@@ -156,10 +158,14 @@ export default function NewSession() {
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Pressable style={styles.actionButton} onPress={handleContinue}>
-        <Text style={styles.actionText}>Continue to Set 1</Text>
+      <Pressable
+        style={[styles.actionButton, !canContinue && styles.actionButtonDisabled]}
+        onPress={handleContinue}
+        disabled={!canContinue}
+      >
+        <Text style={styles.actionText}>Continue</Text>
       </Pressable>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -190,7 +196,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   locationList: {
-    maxHeight: 200,
+    flex: 1,
     marginBottom: 16,
   },
   locationButton: {
@@ -271,5 +277,8 @@ const styles = StyleSheet.create({
     color: "#EDE3B8",
     fontSize: 16,
     marginTop: 16,
+  },
+  actionButtonDisabled: {
+    opacity: 0.4,
   },
 });

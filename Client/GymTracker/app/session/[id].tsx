@@ -1,10 +1,10 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import SpinningDumbbell from "../../components/SpinningDumbbell";
 import { API_ENDPOINTS } from "../../constants/api";
 
 export default function SessionDetail() {
-  const router = useRouter();
   const { id } = useLocalSearchParams();
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -42,28 +42,28 @@ export default function SessionDetail() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#F6C846" />
-      </View>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: "Session Details" }} />
+        <SpinningDumbbell size={48} />
+      </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: "Session Details" }} />
         <Text style={styles.errorText}>{error}</Text>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backText}>Go Back</Text>
-        </Pressable>
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!session) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
+        <Stack.Screen options={{ title: "Session Details" }} />
         <Text style={styles.empty}>Session not found.</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -76,7 +76,8 @@ export default function SessionDetail() {
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <Stack.Screen options={{ title: "Session Details" }} />
       <Text style={styles.date}>{formatDate(session.dateStarted)}</Text>
       {session.location?.name && (
         <Text style={styles.location}>{session.location.name}</Text>
@@ -93,7 +94,7 @@ export default function SessionDetail() {
         </View>
         <View style={styles.statBox}>
           <Text style={styles.statValue}>{totalWeight}</Text>
-          <Text style={styles.statLabel}>Total Weight</Text>
+          <Text style={styles.statLabel}>Total Volume</Text>
         </View>
       </View>
 
@@ -129,11 +130,7 @@ export default function SessionDetail() {
         )}
         ListEmptyComponent={<Text style={styles.empty}>No exercises in this session.</Text>}
       />
-
-      <Pressable style={styles.backButton} onPress={() => router.back()}>
-        <Text style={styles.backText}>Go Back</Text>
-      </Pressable>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -234,16 +231,5 @@ const styles = StyleSheet.create({
   },
   setText: {
     color: "#fff",
-  },
-  backButton: {
-    marginTop: 14,
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: "#F6C846",
-  },
-  backText: {
-    color: "#050505",
-    fontWeight: "700",
   }
 });
