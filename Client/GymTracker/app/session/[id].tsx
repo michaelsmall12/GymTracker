@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 import { FlatList, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import SpinningDumbbell from "../../components/SpinningDumbbell";
 import { API_ENDPOINTS } from "../../constants/api";
+import { useUnits } from "../UnitsContext";
 
 export default function SessionDetail() {
   const { id } = useLocalSearchParams();
+  const { unit } = useUnits();
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +77,19 @@ export default function SessionDetail() {
     0
   );
 
+  function formatDuration(start: string, end: string | null) {
+    if (!end) return null;
+    const ms = new Date(end).getTime() - new Date(start).getTime();
+    if (ms <= 0) return null;
+    const totalMin = Math.floor(ms / 60000);
+    const hrs = Math.floor(totalMin / 60);
+    const mins = totalMin % 60;
+    if (hrs > 0) return `${hrs}h ${mins}m`;
+    return `${mins}m`;
+  }
+
+  const duration = formatDuration(session.dateStarted, session.dateEnded);
+
   return (
     <SafeAreaView style={styles.container}>
       <Stack.Screen options={{ title: "Session Details" }} />
@@ -96,6 +111,12 @@ export default function SessionDetail() {
           <Text style={styles.statValue}>{totalWeight}</Text>
           <Text style={styles.statLabel}>Total Volume</Text>
         </View>
+        {duration && (
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>{duration}</Text>
+            <Text style={styles.statLabel}>Duration</Text>
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -118,7 +139,7 @@ export default function SessionDetail() {
                 {exercise.liftSets.map((set: any, idx: number) => (
                   <View key={set.id} style={styles.setRow}>
                     <Text style={styles.setText}>
-                      Set {idx + 1}: {set.reps} reps × {set.weight} lbs
+                      Set {idx + 1}: {set.reps} reps × {set.weight} {unit}
                     </Text>
                   </View>
                 ))}

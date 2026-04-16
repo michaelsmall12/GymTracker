@@ -16,7 +16,7 @@ namespace GymTracker.Data.EF.Repositories
             _context = context;
         }
 
-        public async Task<bool> AddGymSession(GymSession gymSession)
+        public async Task<Guid?> AddGymSession(GymSession gymSession)
         {
             if (gymSession == null)
             {
@@ -30,29 +30,56 @@ namespace GymTracker.Data.EF.Repositories
                     var existingLocation = await _context.Locations.FindAsync(gymSession.Location.Id);
                     if (existingLocation != null)
                     {
-                        // use the tracked entity so EF doesn't try to insert a duplicate
                         gymSession.Location = existingLocation;
                     }
                     else
                     {
-                        // new location: add it explicitly (optional)
                         _context.Locations.Add(gymSession.Location);
                     }
                 }
+
+                // Deduplicate ExerciseNames: look up by name and reuse existing entities
+                if (gymSession.Exercises != null)
+                {
+                    foreach (var exercise in gymSession.Exercises)
+                    {
+                        if (exercise.ExerciseName != null)
+                        {
+                            var existingName = await _context.ExerciseNames
+                                .FirstOrDefaultAsync(e => e.Name.ToLower() == exercise.ExerciseName.Name.ToLower().Trim());
+                            if (existingName != null)
+                            {
+                                exercise.ExerciseName = existingName;
+                            }
+                        }
+                    }
+                }
+
                 gymSession.DateStarted = DateTime.UtcNow;
+                gymSession.DateEnded = null;
                 await _context.Sessions.AddAsync(gymSession);
                 await _context.SaveChangesAsync();
-                return true;
+                return gymSession.Id;
             }
             catch (Exception)
             {
-                return false;
+                return null;
             }
         }
 
         public async Task<GymSession> GetSessionAsync(Guid id)
         {
             return await _context.Sessions.Include(x => x.Location).Include(x=>x.Exercises).ThenInclude(x=>x.LiftSets).Include(x => x.Exercises).ThenInclude(x => x.ExerciseName).Where(x=>x.Id==id).AsNoTracking().FirstOrDefaultAsync();
+        }
+
+        public async Task<GymSession> GetSessionTrackedAsync(Guid id)
+        {
+            return await _context.Sessions.FirstOrDefaultAsync(x => x.Id == id);
+        }
+
+        public async Task SaveAsync()
+        {
+            await _context.SaveChangesAsync();
         }
 
         public async Task<List<GymSession>> GetSessions()
@@ -79,6 +106,36 @@ namespace GymTracker.Data.EF.Repositories
             {
                 return false;
             }
+        }
+
+        public async Task<List<GymSession>> GetExerciseHistory(string exerciseName, Guid locationId, int count = 3)
+        {
+            return await _context.Sessions
+                .Include(x => x.Location)
+                .Include(x => x.Exercises)
+                    .ThenInclude(x => x.LiftSets)
+                .Include(x => x.Exercises)
+                    .ThenInclude(x => x.ExerciseName)
+                .Where(s => s.Location.Id == locationId
+                    && s.Exercises.Any(e => e.ExerciseName.Name.ToLower() == exerciseName.ToLower().Trim()))
+                .OrderByDescending(s => s.DateStarted)
+                .Take(count)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+
+        public async Task<List<GymSession>> GetExerciseProgress(string exerciseName, int count = 20)
+        {
+            return await _context.Sessions
+                .Include(x => x.Exercises)
+                    .ThenInclude(x => x.LiftSets)
+                .Include(x => x.Exercises)
+                    .ThenInclude(x => x.ExerciseName)
+                .Where(s => s.Exercises.Any(e => e.ExerciseName.Name.ToLower() == exerciseName.ToLower().Trim()))
+                .OrderByDescending(s => s.DateStarted)
+                .Take(count)
+                .AsNoTracking()
+                .ToListAsync();
         }
     }
 }

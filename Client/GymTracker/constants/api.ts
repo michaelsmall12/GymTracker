@@ -8,6 +8,8 @@ export const API_BASE_URL = isWeb
 
 export const API_ENDPOINTS = {
   GYM_SESSIONS: `${API_BASE_URL}/api/GymSession`,
+  EXERCISE_HISTORY: `${API_BASE_URL}/api/GymSession/exercise-history`,
+  EXERCISE_PROGRESS: `${API_BASE_URL}/api/GymSession/exercise-progress`,
   SETS: `${API_BASE_URL}/api/LiftSet`,
   LOCATIONS: `${API_BASE_URL}/api/Location`,
   EXERCISE_NAMES: `${API_BASE_URL}/api/ExerciseName`,

@@ -1,9 +1,11 @@
+import * as Haptics from "expo-haptics";
 import { Stack, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { FlatList, Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FlatList, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, Vibration, View } from "react-native";
 import SpinningDumbbell from "../../components/SpinningDumbbell";
 import { API_ENDPOINTS } from "../../constants/api";
 import { useLocationContext } from "../LocationContext";
+import { useUnits } from "../UnitsContext";
 
 interface SetEntry {
   reps: number;
@@ -18,6 +20,7 @@ interface ExerciseEntry {
 export default function SessionBuilder() {
   const router = useRouter();
   const { location: locationObj } = useLocationContext();
+  const { unit } = useUnits();
 
   // Completed exercises
   const [exercises, setExercises] = useState<ExerciseEntry[]>([]);
@@ -41,6 +44,56 @@ export default function SessionBuilder() {
   // Sets for the current exercise being built
   const [currentSets, setCurrentSets] = useState<SetEntry[]>([]);
 
+  // Insights modal
+  const [insightsVisible, setInsightsVisible] = useState(false);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [exerciseHistory, setExerciseHistory] = useState<
+    { date: string; sets: { reps: number; weight: number }[] }[]
+  >([]);
+
+  // Rest timer
+  const REST_PRESETS = [60, 90, 120, 180];
+  const [restDuration, setRestDuration] = useState(90);
+  const [restSecondsLeft, setRestSecondsLeft] = useState(0);
+  const [restActive, setRestActive] = useState(false);
+  const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRestTimer = useCallback(() => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    setRestSecondsLeft(restDuration);
+    setRestActive(true);
+    restIntervalRef.current = setInterval(() => {
+      setRestSecondsLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(restIntervalRef.current!);
+          restIntervalRef.current = null;
+          setRestActive(false);
+          // Alert the user
+          if (Platform.OS !== "web") {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Vibration.vibrate([0, 400, 200, 400]);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [restDuration]);
+
+  function skipRestTimer() {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    restIntervalRef.current = null;
+    setRestActive(false);
+    setRestSecondsLeft(0);
+  }
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchExerciseNames();
   }, []);
@@ -59,17 +112,65 @@ export default function SessionBuilder() {
     }
   }
 
+  async function fetchExerciseHistory(name: string) {
+    setInsightsLoading(true);
+    setExerciseHistory([]);
+    setInsightsVisible(true);
+    try {
+      if (!locationObj?.id) {
+        setMessage("Location is missing.");
+        setInsightsVisible(false);
+        return;
+      }
+      const params = new URLSearchParams({
+        exerciseName: name,
+        locationId: locationObj.id,
+      });
+      const res = await fetch(`${API_ENDPOINTS.EXERCISE_HISTORY}?${params}`);
+      if (!res.ok) throw new Error("Failed to fetch exercise history");
+      const data: { date: string; sets: { reps: number; weight: number }[] }[] = await res.json();
+      setExerciseHistory(data);
+    } catch {
+      setMessage("Could not load exercise history");
+      setInsightsVisible(false);
+    } finally {
+      setInsightsLoading(false);
+    }
+  }
+
   async function handleAddNewExerciseName(newName: string) {
+    const trimmed = newName.trim();
+    const existing = exerciseNames.find(
+      (ex) => ex.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (existing) {
+      setExerciseType(existing.name);
+      setDropdownVisible(false);
+      setAddingNewName(false);
+      setSearch("");
+      Keyboard.dismiss();
+      return;
+    }
+
     try {
       const res = await fetch(API_ENDPOINTS.EXERCISE_NAMES, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify( newName ),
+        body: JSON.stringify(trimmed),
       });
+      if (res.status === 409) {
+        await fetchExerciseNames();
+        setExerciseType(trimmed);
+        setDropdownVisible(false);
+        setAddingNewName(false);
+        setSearch("");
+        Keyboard.dismiss();
+        return;
+      }
       if (!res.ok) throw new Error("Failed to add new exercise name");
       const added = await res.json();
       setExerciseNames((prev) => [...prev, added]);
-      setExerciseType(newName);
+      setExerciseType(trimmed);
       setDropdownVisible(false);
       setAddingNewName(false);
       setSearch("");
@@ -108,6 +209,7 @@ export default function SessionBuilder() {
     setCurrentSets((prev) => [...prev, newSet]);
     setWeight("");
     setReps("");
+    startRestTimer();
     scrollRef.current?.scrollToEnd({ animated: true });
   }
 
@@ -187,6 +289,13 @@ export default function SessionBuilder() {
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error(`Server returned ${response.status}`);
+      const { id: sessionId } = await response.json();
+
+      // Mark session as complete
+      await fetch(`${API_ENDPOINTS.GYM_SESSIONS}/${sessionId}/complete`, {
+        method: "PUT",
+      });
+
       router.replace("/");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
@@ -219,7 +328,7 @@ export default function SessionBuilder() {
               </View>
               {ex.sets.map((s, sIdx) => (
                 <Text key={sIdx} style={styles.summarySetText}>
-                  Set {sIdx + 1}: {s.reps} reps × {s.weight} lbs
+                  Set {sIdx + 1}: {s.reps} reps × {s.weight} {unit}
                 </Text>
               ))}
             </View>
@@ -241,13 +350,14 @@ export default function SessionBuilder() {
               style={styles.input}
               placeholder="Bench press, Squat, Deadlift"
               placeholderTextColor="#7b6f47"
-              value={search || exerciseType}
+              value={dropdownVisible ? search : exerciseType}
               onFocus={() => {
                 setDropdownVisible(true);
-                setSearch("");
+                setSearch(exerciseType);
               }}
               onChangeText={(text) => {
                 setSearch(text);
+                if (text === "") setExerciseType("");
                 setDropdownVisible(true);
               }}
               onBlur={() => {
@@ -317,13 +427,22 @@ export default function SessionBuilder() {
           )}
         </View>
 
+        {exerciseType.trim().length > 0 && (
+          <Pressable
+            style={styles.insightsButton}
+            onPress={() => fetchExerciseHistory(exerciseType)}
+          >
+            <Text style={styles.insightsButtonText}>📊 View Last Performance</Text>
+          </Pressable>
+        )}
+
         {/* Sets already added to this exercise */}
         {currentSets.length > 0 && (
           <View style={styles.currentSetsSection}>
             {currentSets.map((s, idx) => (
               <View key={idx} style={styles.currentSetRow}>
                 <Text style={styles.currentSetText}>
-                  Set {idx + 1}: {s.reps} reps × {s.weight} lbs
+                  Set {idx + 1}: {s.reps} reps × {s.weight} {unit}
                 </Text>
                 <Pressable onPress={() => handleRemoveCurrentSet(idx)} hitSlop={8}>
                   <Text style={styles.removeText}>×</Text>
@@ -333,10 +452,55 @@ export default function SessionBuilder() {
           </View>
         )}
 
+        {/* Rest timer */}
+        {(restActive || restSecondsLeft === 0 && currentSets.length > 0) && (
+          <View style={restActive ? styles.timerBanner : styles.timerBannerDone}>
+            {restActive ? (
+              <>
+                <Text style={styles.timerLabel}>⏱ Rest</Text>
+                <Text style={styles.timerCount}>
+                  {Math.floor(restSecondsLeft / 60)}:{(restSecondsLeft % 60).toString().padStart(2, "0")}
+                </Text>
+                <Pressable onPress={skipRestTimer} hitSlop={8}>
+                  <Text style={styles.timerSkip}>Skip</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Text style={styles.timerDoneText}>✅ Rest complete — ready for next set!</Text>
+            )}
+          </View>
+        )}
+
+        {/* Rest duration presets */}
+        {currentSets.length > 0 && (
+          <View style={styles.restPresetsRow}>
+            <Text style={styles.restPresetsLabel}>Rest:</Text>
+            {REST_PRESETS.map((sec) => (
+              <Pressable
+                key={sec}
+                style={[
+                  styles.restPresetChip,
+                  restDuration === sec && styles.restPresetChipActive,
+                ]}
+                onPress={() => setRestDuration(sec)}
+              >
+                <Text
+                  style={[
+                    styles.restPresetText,
+                    restDuration === sec && styles.restPresetTextActive,
+                  ]}
+                >
+                  {sec >= 60 ? `${sec / 60}m` : `${sec}s`}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         {/* Weight / Reps inputs */}
         <View style={styles.row}>
           <View style={[styles.field, styles.halfField]}>
-            <Text style={styles.label}>Weight (lbs)</Text>
+            <Text style={styles.label}>Weight ({unit})</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. 135"
@@ -390,6 +554,78 @@ export default function SessionBuilder() {
           </Text>
         )}
       </Pressable>
+
+      {/* Insights Modal */}
+      <Modal
+        visible={insightsVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setInsightsVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📊 {exerciseType}</Text>
+              <Pressable onPress={() => setInsightsVisible(false)} hitSlop={8}>
+                <Text style={styles.modalClose}>✕</Text>
+              </Pressable>
+            </View>
+
+            {insightsLoading ? (
+              <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                <SpinningDumbbell size={32} />
+              </View>
+            ) : exerciseHistory.length === 0 ? (
+              <Text style={styles.modalEmpty}>
+                No previous data for this exercise. This is your first time — just go for it!
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 350 }}>
+                {exerciseHistory.map((entry, idx) => {
+                  const maxWeight = Math.max(...entry.sets.map((s) => s.weight));
+                  const totalVolume = entry.sets.reduce(
+                    (sum, s) => sum + s.weight * s.reps,
+                    0
+                  );
+                  return (
+                    <View key={idx} style={styles.insightCard}>
+                      <Text style={styles.insightDate}>
+                        {idx === 0 ? "Last Session" : `${idx + 1} sessions ago`} —{" "}
+                        {new Date(entry.date).toLocaleDateString()}
+                      </Text>
+                      {entry.sets.map((s, sIdx) => (
+                        <Text key={sIdx} style={styles.insightSet}>
+                          Set {sIdx + 1}: {s.reps} reps × {s.weight} {unit}
+                        </Text>
+                      ))}
+                      <View style={styles.insightStatsRow}>
+                        <Text style={styles.insightStat}>Max: {maxWeight} {unit}</Text>
+                        <Text style={styles.insightStat}>Volume: {totalVolume} {unit}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+
+                {exerciseHistory.length > 0 && (
+                  <View style={styles.suggestionCard}>
+                    <Text style={styles.suggestionTitle}>💡 Progressive Overload</Text>
+                    <Text style={styles.suggestionText}>
+                      Last time your top set was{" "}
+                      {Math.max(...exerciseHistory[0].sets.map((s) => s.weight))} {unit} ×{" "}
+                      {exerciseHistory[0].sets.find(
+                        (s) =>
+                          s.weight ===
+                          Math.max(...exerciseHistory[0].sets.map((s) => s.weight))
+                      )?.reps ?? 0}{" "}
+                      reps. Try adding {unit === "kg" ? "2.5 kg" : "5 lbs"} or 1 extra rep today!
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -564,5 +800,184 @@ const styles = StyleSheet.create({
     color: "#ff8a8a",
     marginTop: 12,
     marginBottom: 4,
+  },
+  // Insights button
+  insightsButton: {
+    backgroundColor: "transparent",
+    borderColor: "#4A90D9",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  insightsButtonText: {
+    color: "#4A90D9",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  // Insights modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalBox: {
+    backgroundColor: "#111",
+    borderColor: "#333",
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: "#F6C846",
+    fontSize: 18,
+    fontWeight: "800",
+    flex: 1,
+  },
+  modalClose: {
+    color: "#888",
+    fontSize: 20,
+    fontWeight: "700",
+    paddingLeft: 12,
+  },
+  modalEmpty: {
+    color: "#888",
+    fontSize: 15,
+    textAlign: "center",
+    paddingVertical: 20,
+  },
+  insightCard: {
+    backgroundColor: "#1a1a1a",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  insightDate: {
+    color: "#F6C846",
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  insightSet: {
+    color: "#EDE3B8",
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  insightStatsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopColor: "#333",
+    borderTopWidth: 1,
+  },
+  insightStat: {
+    color: "#888",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  suggestionCard: {
+    backgroundColor: "#1a2a1a",
+    borderColor: "#2a5a2a",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  suggestionTitle: {
+    color: "#6BCB77",
+    fontSize: 15,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  suggestionText: {
+    color: "#EDE3B8",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  // Rest timer
+  timerBanner: {
+    backgroundColor: "#1a1a2e",
+    borderColor: "#4A90D9",
+    borderWidth: 1,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  timerBannerDone: {
+    backgroundColor: "#1a2a1a",
+    borderColor: "#2a5a2a",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    alignItems: "center",
+  },
+  timerLabel: {
+    color: "#4A90D9",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  timerCount: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+  },
+  timerSkip: {
+    color: "#F6C846",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  timerDoneText: {
+    color: "#6BCB77",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  restPresetsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  restPresetsLabel: {
+    color: "#888",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  restPresetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: "#1a1a1a",
+    borderColor: "#333",
+    borderWidth: 1,
+  },
+  restPresetChipActive: {
+    backgroundColor: "#4A90D9",
+    borderColor: "#4A90D9",
+  },
+  restPresetText: {
+    color: "#888",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  restPresetTextActive: {
+    color: "#fff",
   },
 });

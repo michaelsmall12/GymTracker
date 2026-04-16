@@ -9,6 +9,6 @@ namespace GymTracker.Data.EF.Repositories.Interfaces
     {
         Task<List<ExerciseName>> GetExerciseNames();
 
-        Task<bool> AddExerciseName(string name);
+        Task<ExerciseName?> AddExerciseName(string name);
     }
 }

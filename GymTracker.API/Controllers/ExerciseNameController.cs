@@ -25,7 +25,12 @@ namespace GymTracker.API.Controllers
         [HttpPost]
         public async Task<IActionResult> AddName([FromBody]string name)
         {
-            return await nameRepository.AddExerciseName(name) ? Ok() : BadRequest();
+            var result = await nameRepository.AddExerciseName(name);
+            if (result == null)
+            {
+                return Conflict("An exercise with this name already exists.");
+            }
+            return Ok(result);
         }
     }
 }
